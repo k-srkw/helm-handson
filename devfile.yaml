@@ -1,0 +1,22 @@
+schemaVersion: 2.1.0
+metadata:
+  name: helm-handson
+projects:
+- git:
+    remotes:
+      origin: 'https://github.com/k-srkw/helm-handson.git'
+  name: helm-handson
+components:
+- container:
+    args:
+    - tail
+    - '-f'
+    - /dev/null
+    cpuLimit: 400m
+    cpuRequest: 100m
+    image: 'quay.io/kshiraka/custom-web-terminal-tooling-rhel8:1.5-custom'
+    memoryLimit: 256Mi
+    memoryRequest: 128Mi
+    mountSources: true
+    sourceMapping: /projects
+  name: wto
