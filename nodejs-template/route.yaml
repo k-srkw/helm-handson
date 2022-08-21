@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+spec:
+  to:
+    kind: Service
+    name: nodejs
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

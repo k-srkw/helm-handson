@@ -12,12 +12,10 @@
 
 ## 事前準備
 
-CodeReady Workspace にアクセスし、割り当てられたユーザ名でログインします。その後、 ターミナルを起動します。
+Red Hat OpenShift Dev Spaces (RHOSDS) にアクセスし、割り当てられたユーザ名でログインします。その後、 ターミナルを起動します。
 
-- ワークスペース作成方法 : https://\<CodeReady Workspace URL>/f?url=https://github.com/k-srkw/accelerator-operator-helm-handson.git にアクセス
-- ターミナル起動方法 : 「Terminal」タブ -> 「Open Terminal in specific container」 -> 「cli」
-
-https://codeready-openshift-workspaces.apps.cluster-bzs75.bzs75.sandbox368.opentlc.com/f?url=https://github.com/k-srkw/accelerator-operator-helm-handson.git
+- ワークスペース作成方法 : https://\<RHOSDS URL>/#https://github.com/k-srkw/helm-handson.git にアクセス
+- ターミナル起動方法 : 「Terminal」タブ -> 「New Terminal」 -> 「wto」
 
 ## Chart の作成
 
@@ -39,7 +37,6 @@ $ HANDSONUSER=<ユーザ名>
 Chart を作成するためにはまず最初に `helm create` コマンドで Helm Chart のボイラープレートを作成します。これにより Helm Chart の基本的なディレクトリ構成とファイルが作成されます。
 
 ```
-$ cd charts
 $ helm create handson-$HANDSONUSER
 Creating handson-user1
 ```
@@ -72,29 +69,22 @@ $ rm -rf handson-$HANDSONUSER/templates/*
 ### 適用するマニフェストファイルの作成
 
 実際にデプロイする対象のマニフェストファイルを作成します。
-今回はシンプルに ConfigMap のみを作成する Chart を作成します。
+今回はシンプルな　 Node.js アプリケーションを起動する Chart を作成します。
 
 ```
-$ cat << EOF > handson-$HANDSONUSER/templates/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mychart-configmap
-data:
-  myvalue: "Hello World"
-EOF
+$ cp nodejs-template/* handson-$HANDSONUSER/templates/
 ```
 
 作成できたら実際に OpenShift にデプロイできることを確認します。
 
 ```
-$ oc new-project helm-handson-$HANDSONUSER
+$ oc project $HANDSONUSER-devspaces
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
 $ helm list
-$ oc get cm mychart-configmap
+$ oc get deployment nodejs
 ```
 
-この時点ではテンプレート化は行っておらず、単純に格納したマニフェストファイルがそのまま適用されます。
+この時点ではテンプレート化は行っておらず、単純に `templates` ディレクトリに格納したマニフェストファイルがそのまま適用されます。
 
 ### マニフェストファイルのテンプレート化
 
@@ -102,23 +92,24 @@ $ oc get cm mychart-configmap
 
 `templates` 配下に格納したマニフェストファイルを適用できることを確認できたので、このマニフェストファイルをテンプレート化しリソース名や各フィールドをパラメータ化していきます。
 
-例えば ConfigMap リソース名 `.metadata.name` を Helm リリース名を含む名前にしたい場合、 {{ .Release.Name }} テンプレートディレクティブを使います。
+例えば Deployment リソース名 `.metadata.name` を Helm リリース名を含む名前にしたい場合、 {{ .Release.Name }} テンプレートディレクティブを使います。
 
 以下のように `{{  }}` で囲んだテンプレートディレクティブにマニフェストの一部を置き換えることで、 Helm がデプロイ時にテンプレートから実際にデプロイするマニフェストファイルを生成します。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
+  name: {{ .Release.Name }}-nodejs # 変更
+...
 ```
 
+先ほどデプロイした Helm リリースに反映します。事前に Chart が YAML スキーマに沿っているか `helm lint` で確認することをお勧めします。
+
 ```
+$ helm lint ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ helm list
-$ oc get cm handson-$HANDSONUSER-configmap
+$ oc get deployment handson-$HANDSONUSER-nodejs
 ```
 
 テンプレートディレクティブ内の `Release` はオブジェクトと呼ばれ、 Helm リリースに関する情報を持っています。 `.Release.Name` はリリース名を保持しています。
@@ -160,107 +151,122 @@ Helm には `Release` 以外にも以下の複数の組み込みオブジェク�
 
 ```
 $ cat << EOF > handson-$HANDSONUSER/values.yaml
-favoriteDrink: coffee
+appKind: api-level-0-example
 EOF
 ```
 
 テンプレートを以下のように変更します。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favoriteDrink }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.appKind }}  # 追加
+...
 ```
 
 values.yaml の値が反映されることを確認します。
 
 ```
+$ helm lint ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ helm list
-$ oc get cm handson-$HANDSONUSER-configmap -oyaml
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
 ```
 
 さらに values.yaml を構造化し、新しいキーを追加します。
 
 ```yaml
-favorite:
-  drink: coffee
-  food: pizza
+# values.yaml を以下の内容に変更
+labels:
+  appKind: api-level-0-example
+  provider: handson-user
 ```
 
 これに合わせてテンプレートも変更します。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favorite.drink }}
-  food: {{ .Values.favorite.food }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.labels.appKind }}  # 変更
+    provider: {{ .Values.labels.provider }}  # 追加
+...
 ```
 
 values.yaml の値が反映されることを確認します。
 
 ```
+$ helm lint ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ helm list
-$ oc get cm handson-$HANDSONUSER-configmap -oyaml
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
 ```
 
 #### テンプレート関数、パイプラインの利用
 
 Helm Chart では `.Values` オブジェクトなどから取得した値を加工したり、 k8s クラスタ内の情報を取得したりするために利用できるテンプレート関数が用意されています。
-例えば `quote` 関数を利用することで値を引用符で囲むことができます。
+例えば `quote` 関数を利用することでテンプレートのレンダリング時に値を引用符で囲むことができます。
 
 また、これらの関数はパイプラインで連結できるようになっており、以下は同じ定義となります。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# パイプラインで連結しない例
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ quote .Values.favorite.drink }}
-  food: {{ quote .Values.favorite.food }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ quote .Values.labels.appKind }}
+    provider: {{ quote .Values.labels.provider }}
+...
 ```
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# パイプラインで連結する例
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favorite.drink | quote }}
-  food: {{ .Values.favorite.food | quote }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.labels.appKind | quote }}
+    provider: {{ .Values.labels.provider | quote }}
+...
 ```
 
 パイプラインの例として `upper` 関数を追加し連携させます。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favorite.drink | quote }}
-  food: {{ .Values.favorite.food | upper | quote }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.labels.appKind | upper | quote }} # 変更
+    provider: {{ .Values.labels.provider | quote }} # 変更
+...
 ```
 
 テンプレート関数により値が加工されることを確認します。
 
 ```
+$ helm lint ./handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ helm list
-$ oc get cm handson-$HANDSONUSER-configmap -oyaml
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
 ```
 
 そのほかにも values.yaml に定義がない場合のデフォルト値を設定する `default` 関数や、 k8s クラスタ上のリソースを参照する `lookup` 関数が利用できます。
@@ -276,17 +282,20 @@ Helm テンプレートでは If / Else による条件分岐が利用できま�
 ここで `eq` は値が同一かどうかを比較する関数です。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# 値が同一かどうかを比較する例
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favorite.drink | default "tea" | quote }}
-  food: {{ .Values.favorite.food | upper | quote }}
-  {{ if eq .Values.favorite.drink "coffee" }}
-  mug: "true"
-  {{ end }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.labels.appKind | upper | quote }}
+    provider: {{ .Values.labels.provider | quote }}
+    {{ if eq .Values.labels.provider "handson-user" }}
+    handson-environment: "true"
+    {{ end }}
+...
 ```
 
 上記をそのまま実行するとレンダリング時に `if` の部分が空行となります。
@@ -294,17 +303,20 @@ data:
 下側を詰めたい場合は ` -}}` とします。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# 値が同一かどうかを比較する例 (空行を詰める場合)
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  drink: {{ .Values.favorite.drink | default "tea" | quote }}
-  food: {{ .Values.favorite.food | upper | quote }}
-  {{- if eq .Values.favorite.drink "coffee" }}
-  mug: "true"
-  {{- end }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    service: {{ .Values.labels.appKind | upper | quote }}
+    provider: {{ .Values.labels.provider | quote }}
+    {{- if eq .Values.labels.provider "handson-user" }}
+    handson-environment: "true"
+    {{- end }}
+...
 ```
 
 オブジェクトのスコープの変更には `with` を利用できます。
@@ -312,27 +324,58 @@ data:
 例えば以下の例の場合、 `with` アクションの範囲内では各フィールドで毎回 `.Values.favorite` と書くことなくオブジェクトを利用できます。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# スコープの変更例
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  {{- with .Values.favorite }}
-  drink: {{ .drink | default "tea" | quote }}
-  food: {{ .food | upper | quote }}
-  {{- end }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    {{- with .Values.labels }}
+    service: {{ .appKind | upper | quote }}
+    provider: {{ .provider | quote }}
+    {{- end }}
+...
 ```
 
-ただし注意点として親オブジェクトより上のスコープのオブジェクトにはアクセスできなくなります。
+フロー制御の結果がレンダリング時に反映されることを確認します。
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    {{- with .Values.labels }} # 追加
+    service: {{ .appKind | upper | quote }}
+    provider: {{ .provider | quote }}
+    {{- if eq .provider "handson-user" }} # 追加
+    handson-environment: "true" # 追加
+    {{- end }} # 追加
+    {{- end }} # 追加
+...
+```
+
+```
+$ helm lint ./handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
+```
+
+`with` アクションによるスコープ変更の注意点として、親オブジェクトより上のスコープのオブジェクトにはアクセスできなくなります。
 例えば以下の `.Release.Name` にはアクセスできずレンダリングに失敗します。
 
 ```yaml
-  {{- with .Values.favorite }}
-  drink: {{ .drink | default "tea" | quote }}
-  food: {{ .food | upper | quote }}
-  {{- end }}
-  release: {{ .Release.Name }}
+    {{- with .Values.labels }}
+    service: {{ .appKind | upper | quote }}
+    provider: {{ .provider | quote }}
+    release: {{ .Release.Name }} # スコープ範囲外のためレンダリングに失敗
+    {{- end }}
 ```
 
 これを解決するには　`.Release.Name` の前に `$` をつけるか、変数を利用します。
@@ -342,18 +385,41 @@ data:
 また、以下のように `with` のスコープの外で変数を定義することでも解決できます。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
-data:
-  myvalue: "Hello World"
-  {{- $relname := .Release.Name -}}
-  {{- with .Values.favorite }}
-  drink: {{ .drink | default "tea" | quote }}
-  food: {{ .food | upper | quote }}
-  release: {{ $relname }}
-  {{- end }}
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    {{- $relname := .Release.Name -}} # 追加
+    {{- with .Values.labels }}
+    service: {{ .appKind | upper | quote }}
+    provider: {{ .provider | quote }}
+    {{- if eq .provider "handson-user" }}
+    handson-environment: "true"
+    {{- end }}
+    release: {{ $relname }} # 追加
+    {{- end }}
+...
+```
+
+フロー制御の結果がレンダリング時に反映されることを確認します。
+
+```
+$ helm lint ./handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
+```
+
+`with` の代わりに `range` アクションと変数を利用することで、複数フィールドを定義するときなどに繰り返し処理を記述することもできます。
+
+```yaml
+    {{- range $key, $val := .Values.labels }}
+    {{ $key }}: {{ $val | quote }}
+    {{- end }}
 ```
 
 #### 名前付きテンプレート (_helpers.tpl)
@@ -364,26 +430,59 @@ data:
 
 ```yaml
 {{- define "mychart.app" -}}
-app_name: {{ .Chart.Name }}
-app_version: "{{ .Chart.Version }}"
+chartname: {{ .Chart.Name }}
+chartversion: "{{ .Chart.Version }}"
 {{- end -}}
 ```
 
 呼び出すときには `include` 関数を利用します。 `indent` 関数で挿入されるフィールドのインデントを変更できます。
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# 共通処理の利用例
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-configmap
+  name: {{ .Release.Name }}-nodejs
   labels:
-{{ include "mychart.app" . | indent 4 }}
-data:
-  myvalue: "Hello World"
-  {{- range $key, $val := .Values.favorite }}
-  {{ $key }}: {{ $val | quote }}
-  {{- end }}
-{{ include "mychart.app" . | indent 2 }}
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    {{- range $key, $val := .Values.labels }}
+    {{ $key | lower }}: {{ $val | quote }}
+    {{- end }}
+{{ include "mychart.app" . | indent 4 }} # 共通処理を記述したテンプレートを呼び出す
+```
+
+実際に `_helpers.tpl` ファイルを作成し、レンダリング時に反映されることを確認します。
+
+```
+$ cat << EOF > handson-$HANDSONUSER/templates/_helpers.tpl
+{{- define "mychart.app" -}}
+chartname: {{ .Chart.Name }}
+chartversion: "{{ .Chart.Version }}"
+{{- end -}}
+EOF
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+    {{- range $key, $val := .Values.labels }} # 変更
+    {{ $key | lower }}: {{ $val | quote }} # 変更
+    {{- end }} # 変更
+{{ include "mychart.app" . | indent 4 }} # 追加
+```
+
+```
+$ helm lint ./handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ oc get deployment handson-$HANDSONUSER-nodejs --show-labels
 ```
 
 ### テスト、デバッグ
@@ -421,24 +520,189 @@ spec:
 
 `helm test <リリース名>` を実行することで Pod が起動し、テストを実行します。
 
+実際にテストを実行してみます。 `values.yaml` を以下のように変更します。 (本来は Service のマニフェストもテンプレート化すべきですが、ここでは割愛します)
+
+```yaml
+labels:
+  appKind: api-level-0-example
+  provider: handson-user
+service: # 追加
+  port: 8080 # 追加
+```
+
+テスト用 Pod マニフェストファイルを作成します。
+
+```
+$ mkdir handson-$HANDSONUSER/templates/tests
+$ cat << EOF > handson-$HANDSONUSER/templates/tests/test-app.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-nodejs-test-connection"
+  labels:
+    appkind: "test"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['nodejs:{{ .Values.service.port }}']
+  restartPolicy: Never
+EOF
+```
+
+テストを実行します。
+
+```
+$ helm lint ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm test handson-$HANDSONUSER
+```
+
 ## パッケージング
 
-`helm package <CHART-PATH>` で Chart をパッケージングします。次に、Index ファイルを作成します。
+作成した Helm Chart を Helm リポジトリ上で公開するためには Chart をアーカイブファイルとしてパッケージングする必要があります。`helm package <CHART-PATH>` で Chart をパッケージングします。
 
 ```
 $ helm package handson-$HANDSONUSER
+# パッケージングされた Helm Chart の内容確認
+$ tar tf handson-opentlc-mgr-0.1.0.tgz
+```
+
+Helm Chart 公開のため Helm Chart リポジトリを新規に起動する場合、 `helm repo index [DIR]` により Helm リポジトリで公開する Chart のエントリを持つ Index ファイルを作成します。  
+既存の Helm リポジトリの Index ファイルに新しく Helm Chart を追加する場合、 `--merge` オプションで Index ファイルを指定します。
+
+```
 $ helm repo index .
 ```
 
-## Chart Repository の公開
+## カスタム Chart Repository の公開
+
+静的コンテンツとして `index.yaml` および Chart のアーカイブを公開する Web サーバを起動すると Helm Reposytory として機能します。  
+`httpd` Pod を起動し、 `index.yaml` および　Chart のアーカイブファイルをアップロードし `Route` 経由で公開します。
 
 ```
-$ oc new-app --name httpdd httpd~./
-$ oc expose svc httpdd
+$ oc new-app --name custom-helm-repositry httpd
+$ oc start-build httpd --from-dir . --wait
+$ oc expose svc custom-helm-repositry
 ```
+
+Helm リポジトリから Chart を取得しデプロイできることを確認するため、あらかじめ既存の Helm リリースを削除しておきます。
+
+```
+$ helm uninstall handson-$HANDSONUSER
+```
+
+Helm CLI 上で Helm リポジトリを追加し、 Chart の情報を確認できること、アプリケーションをデプロイできることを確認します。
 
 ```
 $ helm repo add myrepo <Repo_URL>
 $ helm search repo handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER myrepo/handson-$HANDSONUSER
 ```
+
+## カスタム Chart Repository の Developer Catalog への追加
+
+作成した Helm Chart を OpenShift の Web Console (Developer Perspective) から利用できるように、カスタム Helm リポジトリを Developer Catalog へ追加します。
+
+以下のいずれかの方法でカスタム Helm リポジトリを Developer Catalog へ追加します。今回は 2 の方法で追加します。
+
+1. クラスタ管理者が OpenShift クラスタ全体に Helm リポジトリを公開する (クラスタスコープの `HelmChartRepository` CR を作成する)
+2. 適切な RBAC 権限を持つ Project メンバが特定の Namespace に限定して Helm リポジトリを公開する (Namespace スコープの ProjectHelmChartRepository CR を作成する)
+
+`ProjectHelmChartRepository` CR の `url` に追加する Helm リポジトリの URL を指定します。
+
+```yaml
+# ProjectHelmChartRepository CR の例
+apiVersion: helm.openshift.io/v1beta1
+kind: ProjectHelmChartRepository
+metadata:
+  name: <name>
+spec:
+  url: https://my.chart-repo.org/stable
+
+  # optional name that might be used by console
+  name: <chart-repo-display-name>
+
+  # optional and only needed for UI purposes
+  description: <My private chart repo>
+
+  # required: chart repository URL
+  connectionConfig:
+    url: <helm-chart-repository-url>
+```
+
+`prj-helm-chart-repo.yaml` の `url` を先ほど起動した Helm リポジトリの URL に変更し、 CR を作成します。
+
+```yaml
+apiVersion: helm.openshift.io/v1beta1
+kind: ProjectHelmChartRepository
+metadata:
+  name: myrepo
+spec:
+  name: myrepo
+  connectionConfig:
+    url: <your-helm-chart-repository-url> # 変更
+```
+
+```
+$ oc apply -f prj-helm-chart-repo.yaml 
+```
+
+OpenShift Web Console の Developer Perspective 上で [+Add] > [Helm Chart] を表示し、 `Myrepo` リポジトリが利用できることを確認します。
+
+Web Console 上からデプロイできることを確認するため、あらかじめ既存の Helm リリースを削除しておきます。
+
+```
+$ helm uninstall handson-$HANDSONUSER
+```
+
+以下の手順で Web Console から Helm Chart をデプロイできることを確認します。
+
+1. [Chart Repositories] で `Myrepo` にチェック
+2. [Handson <ハンズオンユーザ名>] Chart を選択、 [Install Helm Chart] > [Install]
+
+## Helm Dependency
+
+アプリケーションの起動に必要なデータベースや依存サービスなど依存関係にある Helm Chart を同時にデプロイしたい場合、 `Chart.yaml` の `dependencies` フィールドに依存関係を定義します。詳細は [公式ドキュメント](https://helm.sh/docs/chart_best_practices/dependencies/) で確認できます。
+
+```yaml
+dependencies:
+- name: nodejs-ex-k
+  version: 0.2.1 # 最初に ~ をつけることで特定バージョン以上の Chart を利用するよう指定可能
+  repository: https://redhat-developer.github.io/redhat-helm-charts
+  condition: nodejs-ex-k.enabled # 該当するパラメータが false の場合依存 Chart をインストールしない
+```
+
+`Chart.yaml` に上の定義を追加し、 実際に同時にデプロイされることを確認します。  
+事前に依存関係にある Helm Chart を `charts/` 配下にダウンロードするため `helm dependency update` を実行します。
+
+```
+$ helm lint ./handson-$HANDSONUSER
+$ helm dependency update handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ oc get deploymentconfig nodejs-example
+```
+
+依存関係にある Chart のパラメータは `values.yaml` で `<Chart 名>.<パラメータフィールド>` という形で定義できます。
+
+```yaml
+nodejs-ex-k:
+  enabled: true
+  ingress:
+    enabled: true
+```
+
+```
+$ helm lint ./handson-$HANDSONUSER
+# 実際の適用前のレンダリング時点のマニフェスト確認
+$ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
+$ oc get deploymentconfig nodejs-example
+```
+
+以上で Helm Chart 開発ハンズオンは終了です。お疲れ様でした。

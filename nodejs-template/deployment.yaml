@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+  annotations:
+    image.openshift.io/triggers: |-
+      [
+        {
+          "from":{
+            "kind":"ImageStreamTag",
+            "name":"nodejs:latest"
+          },
+          "fieldPath":"spec.template.spec.containers[0].image"
+        }
+      ]
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nodejs
+      app.kubernetes.io/instance: nodejs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nodejs
+        app.kubernetes.io/instance: nodejs
+    spec:
+      containers:
+        - name: web
+          image: nodejs:latest
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http

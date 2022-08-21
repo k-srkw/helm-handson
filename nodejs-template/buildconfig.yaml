@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: nodejs
+  labels:
+    app.kubernetes.io/name: nodejs
+    app.kubernetes.io/instance: nodejs
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/nodeshift-starters/nodejs-rest-http
+      ref: main
+  strategy:
+    type: Source
+    sourceStrategy:
+      from:
+        kind: ImageStreamTag
+        namespace: openshift
+        name: nodejs:latest
+  output:
+    to:
+      kind: ImageStreamTag
+      name: nodejs:latest
+  triggers:
+    - type: ConfigChange

@@ -1,0 +1,8 @@
+apiVersion: helm.openshift.io/v1beta1
+kind: ProjectHelmChartRepository
+metadata:
+  name: myrepo
+spec:
+  name: myrepo
+  connectionConfig:
+    url: <your-helm-chart-repository-url> # 起動した Helm Repository の URL に変更
