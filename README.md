@@ -691,10 +691,10 @@ $ helm uninstall handson-$HANDSONUSER
 
 ```yaml
 dependencies:
-- name: nodejs-ex-k
-  version: 0.2.1 # 最初に ~ をつけることで特定バージョン以上の Chart を利用するよう指定可能
+- name: quarkus
+  version: 0.0.3 # 最初に ~ をつけることで特定バージョン以上の Chart を利用するよう指定可能
   repository: https://redhat-developer.github.io/redhat-helm-charts
-  condition: nodejs-ex-k.enabled # 該当するパラメータが false の場合依存 Chart をインストールしない
+  condition: quarkus.enabled # 該当するパラメータが false の場合依存 Chart をインストールしない
 ```
 
 `Chart.yaml` に上の定義を追加し、 実際に同時にデプロイされることを確認します。  
@@ -706,16 +706,15 @@ $ helm dependency update handson-$HANDSONUSER
 # 実際の適用前のレンダリング時点のマニフェスト確認
 $ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ oc get deploymentconfig nodejs-example
+$ oc get deployment handson-$HANDSONUSER
 ```
 
 依存関係にある Chart のパラメータは `values.yaml` で `<Chart 名>.<パラメータフィールド>` という形で定義できます。
 
 ```yaml
-nodejs-ex-k:
-  enabled: true
-  ingress:
-    enabled: true
+quarkus:
+  deploy:
+    replicas: 2
 ```
 
 ```
@@ -723,7 +722,7 @@ $ helm lint ./handson-$HANDSONUSER
 # 実際の適用前のレンダリング時点のマニフェスト確認
 $ helm upgrade --install --dry-run handson-$HANDSONUSER ./handson-$HANDSONUSER
 $ helm upgrade --install handson-$HANDSONUSER ./handson-$HANDSONUSER
-$ oc get deploymentconfig nodejs-example
+$ oc get deployment handson-$HANDSONUSER
 ```
 
 以上で Helm Chart 開発ハンズオンは終了です。お疲れ様でした。
