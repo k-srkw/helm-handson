@@ -321,7 +321,7 @@ metadata:
 
 オブジェクトのスコープの変更には `with` を利用できます。
 
-例えば以下の例の場合、 `with` アクションの範囲内では各フィールドで毎回 `.Values.favorite` と書くことなくオブジェクトを利用できます。
+例えば以下の例の場合、 `with` アクションの範囲内では各フィールドで毎回 `.Values.labels` と書くことなくオブジェクトを利用できます。
 
 ```yaml
 # スコープの変更例
@@ -511,9 +511,9 @@ metadata:
     "helm.sh/hook": test
 spec:
   containers:
-    - name: wget
-      image: busybox
-      command: ['wget']
+    - name: curl
+      image: registry.access.redhat.com/ubi8
+      command: ['curl']
       args: ['{{ include "test.fullname" . }}:{{ .Values.service.port }}']
   restartPolicy: Never
 ```
@@ -545,9 +545,9 @@ metadata:
     "helm.sh/hook": test
 spec:
   containers:
-    - name: wget
-      image: busybox
-      command: ['wget']
+    - name: curl
+      image: registry.access.redhat.com/ubi8
+      command: ['curl']
       args: ['nodejs:{{ .Values.service.port }}']
   restartPolicy: Never
 EOF
@@ -584,8 +584,8 @@ $ helm repo index .
 `httpd` Pod を起動し、 `index.yaml` および　Chart のアーカイブファイルをアップロードし `Route` 経由で公開します。
 
 ```
-$ oc new-app --name custom-helm-repositry httpd
-$ oc start-build httpd --from-dir . --wait
+$ oc new-app --name custom-helm-repositry httpd~./
+$ oc start-build custom-helm-repositry --from-dir . --wait
 $ oc expose svc custom-helm-repositry
 ```
 
@@ -611,6 +611,27 @@ $ helm upgrade --install handson-$HANDSONUSER myrepo/handson-$HANDSONUSER
 
 1. クラスタ管理者が OpenShift クラスタ全体に Helm リポジトリを公開する (クラスタスコープの `HelmChartRepository` CR を作成する)
 2. 適切な RBAC 権限を持つ Project メンバが特定の Namespace に限定して Helm リポジトリを公開する (Namespace スコープの ProjectHelmChartRepository CR を作成する)
+
+デフォルトの Project スコープの Admin 権限では ProjectHelmChartRepository CR を作成できません。そのため、事前にクラスタ管理者が以下のような ClusterRole を作成し、各ユーザに RBAC 権限を付与する必要があります。
+
+```yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: helm-chartrepos-editor
+rules:
+  - verbs:
+      - '*'
+    apiGroups:
+      - helm.openshift.io
+    resources:
+      - projecthelmchartrepositories
+```
+
+```
+# Cluster 管理ユーザが事前に実施する
+$ oc adm policy add-role-to-user -n <Namespace 名> helm-chartrepos-editor <ユーザ名>
+```
 
 `ProjectHelmChartRepository` CR の `url` に追加する Helm リポジトリの URL を指定します。
 
